@@ -1,0 +1,141 @@
+---
+title: "Caso practico ZBTB7B"
+author: "David Cáceres"
+date: "1/4/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+
+
+```
+
+
+```{r}
+
+
+
+# Carpetas de datos y de resultados
+setwd("~/Documentos/Master/Analisis de datos omicos/Materiales/Analisis_de_datos_omicos-Materiales_para_un_curso/StatisticalAnalysisOfMicroarrayData")
+dir.create("data")
+dir.create("results")
+
+# Visulalización inicial de los datos
+
+targets <- read.csv2("./data/targets.csv", header = TRUE, sep = ";") 
+knitr::kable(
+   targets, booktabs = TRUE,
+   caption = 'Content of the targets file used for the current analysis')
+```
+
+
+
+```{r eval=FALSE, include=FALSE}
+ # Instalamos los paquetes necesarios para el análisis
+
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+BiocManager::install()
+
+install.packages("colorspace")
+install.packages("gplots")
+install.packages("ggplot2")
+install.packages("ggrepel")
+install.packages("BiocManager")
+BiocManager::install("oligo")
+BiocManager::install("pd.mogene.2.1.st")
+BiocManager::install("arrayQualityMetrics")
+BiocManager::install("limma")
+BiocManager::install("genefilter")
+BiocManager::install("pvca")
+BiocManager::install("mogene21sttranscriptcluster.db")
+BiocManager::install("annotate")
+BiocManager::install("org.Mm.eg.db")
+BiocManager::install("ReactomePA")
+
+
+library(genefilter)
+library(ggplot2)
+library(ggrepel)
+
+
+library(colorspace)
+library(gplots)
+library(htmlTable)
+library(prettydoc)
+library(devtools)
+library(BiocManager)
+```
+
+
+```{r}
+targets <- read.csv2("/home/david/Documentos/Master/Analisis de datos omicos/Materiales/Analisis_de_datos_omicos-Materiales_para_un_curso/StatisticalAnalysisOfMicroarrayData/data/targets.csv", header = TRUE, sep = ";")
+```
+
+### Lectura de los datos
+
+```{r message=FALSE, warning=FALSE}
+require(oligo)
+celFiles <- list.celfiles("/home/david/Documentos/Master/Analisis de datos omicos/Materiales/Analisis_de_datos_omicos-Materiales_para_un_curso/StatisticalAnalysisOfMicroarrayData/data", full.names = TRUE)
+require(Biobase)
+my.targets <-read.AnnotatedDataFrame(file.path("/home/david/Documentos/Master/Analisis de datos omicos/Materiales/Analisis_de_datos_omicos-Materiales_para_un_curso/StatisticalAnalysisOfMicroarrayData/data","targets.csv"), 
+                                     header = TRUE, row.names = 1, 
+                                     sep=";") 
+rawData <- read.celfiles(celFiles, phenoData = my.targets)
+```
+```{r}
+colnames(rawData) <-rownames(pData(rawData)) <- my.targets@data$ShortName
+```
+
+### Control de calidad de los datos
+
+```{r message=FALSE, warning=FALSE}
+# Usaremos el paquete "arrayQualityMetrics"
+
+require(arrayQualityMetrics)
+arrayQualityMetrics(rawData, outdir = file.path("./results", "QCDir.Raw"), force=TRUE)
+
+
+# Representamos los componentes principales para ver su agrupación
+
+require(ggplot2)
+require(ggrepel)
+plotPCA3 <- function (datos, labels, factor, title, scale,colores, size = 1.5, glineas = 0.25) {
+  data <- prcomp(t(datos),scale=scale)
+  # plot adjustments
+  dataDf <- data.frame(data$x)
+  Group <- factor
+  loads <- round(data$sdev^2/sum(data$sdev^2)*100,1)
+  # main plot
+  p1 <- ggplot(dataDf,aes(x=PC1, y=PC2)) +
+    theme_classic() +
+    geom_hline(yintercept = 0, color = "gray70") +
+    geom_vline(xintercept = 0, color = "gray70") +
+    geom_point(aes(color = Group), alpha = 0.55, size = 3) +
+    coord_cartesian(xlim = c(min(data$x[,1])-5,max(data$x[,1])+5)) +
+    scale_fill_discrete(name = "Group")
+  # avoiding labels superposition
+  p1 + geom_text_repel(aes(y = PC2 + 0.25, label = labels),segment.size = 0.25, size = size) + 
+    labs(x = c(paste("PC1",loads[1],"%")),y=c(paste("PC2",loads[2],"%"))) +  
+    ggtitle(paste("Principal Component Analysis for: ",title,sep=" "))+ 
+    theme(plot.title = element_text(hjust = 0.5)) +
+    scale_color_manual(values=colores)
+  }
+```
+
+```{r}
+plotPCA3(exprs(rawData), labels = targets$ShortName, factor = targets$Group, 
+        title="Raw data", scale = FALSE, size = 3, 
+        colores = c("red", "blue", "green", "yellow"))
+
+
+boxplot(rawData, cex.axis=0.5, las=2,  which="all", 
+        col = c(rep("red", 3), rep("blue", 3), rep("green", 3), rep("yellow", 3)),
+        main="Distribution of raw intensity values")
+```
+
+
+### Normalización de los datos
+

@@ -1,0 +1,84 @@
+---
+title: "Caso Practico Estrogen"
+author: "David Cáceres"
+date: "30/3/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+if (!(require("estrogen", character.only=T))){
+    BiocManager::install("estrogen")
+}
+
+# Directorio de trabajo
+workingDir <-getwd()
+if (!file.exists("datos")) system("mkdir datos")
+if (!file.exists("datos/estrogen")) system("mkdir datos/estrogen")
+if (!file.exists("results")) system("mkdir results")
+dataDir <-file.path(workingDir, "datos/estrogen")
+resultsDir <- file.path(workingDir, "results")
+setwd(workingDir)
+
+```
+
+```{r}
+options(width=80)
+options(digits=5)
+```
+
+
+### Obtención y lectura de los datos
+
+```{r}
+library(estrogen)
+estrogenDir <- system.file("extdata", package = "estrogen")
+print(estrogenDir)
+```
+
+### Lectura de los datos
+```{r}
+library(Biobase)
+library(affy)
+sampleInfo <- read.AnnotatedDataFrame(file.path(estrogenDir,"targLimma.txt"),
+    header = TRUE, row.names = 1, sep="\t")
+fileNames <- pData(sampleInfo)$FileName
+rawData <- read.affybatch(filenames=file.path(estrogenDir,fileNames),
+                          phenoData=sampleInfo)
+```
+
+
+```{r}
+# Ejemplo defectuoso bad.cel
+require(affy)
+sampleInfoWithBad <- read.AnnotatedDataFrame(file.path("phenoDataWithBad.txt"),
+    header = TRUE, row.names = NULL, sep="\t")
+fileNames <- pData(sampleInfoWithBad)$FileName
+rawData.wrong <- read.affybatch(filenames=file.path(dataDir,fileNames),
+                          phenoData=sampleInfoWithBad)
+```
+
+
+### Exploración, Control de Calidad y Normalización
+
+
+```{r}
+# Visualizamos las agrupaciones de los arrays
+
+affyColores <- c(1,2,2,3,3,4,4,8,8)
+affyLineas <- c(1,2,2,2,2,3,3,3,3)
+hist(rawData.wrong, main="Signal distribution", col=affyColores, lty=affyLineas)
+legend (x="topright", legend=fileNames , col=affyColores, lty=affyLineas, cex=0.7)
+```
+
+
+```{r}
+# Vemos la distribución de las muestras
+
+boxplot(rawData.wrong, main="Signal distribution", col=affyColores, las=2)
+```
+
