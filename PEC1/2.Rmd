@@ -1,0 +1,212 @@
+---
+title: '2'
+author: "David Cáceres"
+date: "24/4/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+
+```{r include=FALSE}
+library(Biobase)
+library(oligo)
+library(arrayQualityMetrics)
+library(ggfortify)
+library(genefilter)
+library(affy)
+library(limma)
+library(dplyr)
+library(xtable)
+library(gplots)
+library(ggplot2)
+library(AnnotationDbi)
+library(ReactomePA)
+```
+
+
+
+
+```{r include=FALSE}
+# DIrectorio de trabajo
+dir <-getwd()
+datadir <- file.path(dir, "Datos")
+resultsdir <- file.path(dir, "Resultados")
+```
+
+```{r include=FALSE}
+
+# Selección aleatoria de las muestras
+
+set.seed(1314)
+
+
+celFiles<- list.celfiles(datadir)[c(sample(1:11, 5), sample(12:29, 5), sample(30:47, 5))]
+
+# Targets
+
+# Targets
+
+targets <- data.frame(fileName = celFiles,
+                      Groups = c(rep("Sintomaticos", 5), rep("Asintomaticos", 5),
+                                 rep("Control", 5)),
+                      ShortName = c(paste(rep("S", 5), seq(1:5), sep = ""),
+                                    paste(rep("A", 5), seq(1:5), sep = ""),
+                                    paste(rep("C", 5), seq(1:5), sep = "")))
+
+write.csv(targets, file.path(datadir, "targets.csv"), row.names = FALSE)
+
+
+
+# Nombres y colores
+
+sampleNames <- as.character(targets$ShortName)
+colores <- c(rep("lightskyblue1", 5), rep("deepskyblue3", 5), rep("olivedrab", 5))
+
+targets <- AnnotatedDataFrame(targets)
+
+# ExpressionSet
+
+targets <- read.AnnotatedDataFrame(file.path(datadir, "targets.csv"),
+header = TRUE, row.names = 1, sep = ",")
+rawdata <- read.celfiles(file.path(datadir, celFiles), phenoData = targets)
+
+
+# Plots de datos crudos
+
+boxplot(rawdata, cex.axis=0.5, las=2,  which="all", names=sampleNames ,col = colores, main = "Distribución de intensidades en datos crudos")
+
+plotPCA <- function ( X, labels=NULL, colors=NULL, dataDesc="", scale=FALSE, formapunts=NULL, myCex=0.8,...)
+{
+    pcX<-prcomp(t(X), scale=scale) 
+    loads<- round(pcX$sdev^2/sum(pcX$sdev^2)*100,1)
+    xlab<-c(paste("PC1",loads[1],"%"))
+    ylab<-c(paste("PC2",loads[2],"%"))
+    if (is.null(colors)) colors=1
+    plot(pcX$x[,1:2],xlab=xlab,ylab=ylab, col=colors, pch=formapunts, 
+         xlim=c(min(pcX$x[,1])-100000, max(pcX$x[,1])+100000),ylim=c(min(pcX$x[,2])-100000, max(pcX$x[,2])+100000))
+    text(pcX$x[,1],pcX$x[,2], labels, pos=3, cex=myCex)
+    title(paste("Componentes principales para datos crudos de", dataDesc, sep=" "), cex=0.8)
+}
+
+plotPCA(exprs(rawdata), labels=sampleNames, dataDesc="rawdata", colors=colores,
+        formapunts=c(rep(16,4),rep(17,4)), myCex=0.6)
+
+clust.euclid.average <- hclust(dist(t(exprs(rawdata))),method="average")
+plot(clust.euclid.average, label= sampleNames, main="Hierarchical clustering of RawData", cex=0.7,  hang=-1)
+
+
+# Normalización
+
+eset <- oligo::rma(rawdata)
+write.exprs(eset, file.path(resultsdir, "Normdata.txt"))
+
+
+
+```
+
+
+
+### 1. Resumen
+
+
+### 2. Objetivos
+
+Partiendo de la base de que el data set está dividido en 3 tipos de muestras: sintomáticos, asintomáticos, y controles sanos. Obtenidas a partir de pacientes de COVID-19. Realizaremos un análisis de microarray cruzado entre los 3 grupos, de este modo haremos 3 comparaciones.
+
+a. Expresión diferencial entre casos sintomáticos y asintomáticos
+
+b. Expresión diferencial entre casos sintomáticos y controles sanos
+
+c. Expresión diferencial entre casos asintomáticos y controles sanos
+
+Para ello,nos basaremos en las muestras propuestas en la entrada GSE177477 de GEO, que pertenecen a individuos procedentes de Pakistan, y que fueron analizadas usando "Clariom S RNA Microarray, Affymetrix Inc."
+
+
+### 3 Material y métodos
+
+
+#### 3.1 Herramientas informáticas
+
+El presente análisis se realizó usando la versión 4.1.3 (2022-03-10) de R. Tomando como base la librería bioconductor junto con otras accesorias presentes en el código que aparece en el anexo.
+
+
+
+
+#### 3.2 Objeto del estudio
+
+El estudio del cual se deriva el dataset (Masood et al. 2021), concluye que en los pacientes asintomáticos, el interferon tipo I relacionado con la respuesta inmune a las infecciones víricas, se encuentra elevado, o regulado de una forma que produce su elevación en determinados sujetos. Esto sugiere un efecto protector respecto a los sujetos infectados que desarrollaron síntomas leves y graves. 
+
+Los pacientes asintomáticos también mostraron una sobre expresión de genes relacionados con la respuesta humoral y una infra expresión de otros tipos de genes. El principal hayazgo, es de la sobre expresión en asitomáticos de genes relacionados con la respuesta del interferón tipo I (SOCS3, IRF2BP2, IRF2BPL), y la infra expresión del grupo de genes ((SOCS3, IRF2BP2, IRF2BPL) en comparación con los enfermos leves y graves).
+
+Todo esto nos lleva a pensar que la respuesta inicial a la COVID-19 puede estar mediada por genes relacionados al interferón tipo I.
+
+El estudio diferencia entre 3 grupos: asintomáticos (A), sintomáticos (S), y controles (C). Con muestras de 47 sujetos repartidas en los 3 grupos (11(A), 18(S), 18(C)).
+
+
+#### 3.3 Selección de los datos
+
+Seleccionamos las muestras de forma aleatoria a partir de los 3 grupos citados, para ello, fijamos la "seed" en 1314 y tomamos 15 muestras(3 de cada grupo).
+
+Las muestras seleccionadas son:
+
+(A). "GSM5374839_S1.CEL"  "GSM5374847_S9.CEL"  "GSM5374841_S3.CEL"  "GSM5374844_S6.CEL"  "GSM5374842_S4.CEL"
+
+(S). "GSM5374859_S21.CEL" "GSM5374850_S12.CEL" "GSM5374867_S29.CEL" "GSM5374861_S23.CEL" "GSM5374852_S14.CEL"
+
+(C). "GSM5374873_S35.CEL" "GSM5374884_S46.CEL" "GSM5374870_S32.CEL" "GSM5374877_S39.CEL" "GSM5374876_S38.CEL"
+
+
+
+También creamos un archivo csv que contiene los identificadores de cada muestra y el grupo al que pertenecen. Esto nos servirá para crear un Expressionset.
+
+
+#### 3.4 Exploración de los datos y control de calidad
+
+Haremos una exploración inicial de los datos a través de su visualización en gráficos de caja, de dispersión y un cluster jerárquico, junto con un análisis de de componentes principales (PCA). Estamos ante un microarray de un array de un solo color, así que los datos proceden del análisis de las intensidades de señal de cada microarray.
+
+Usaremos rawdata, que contiene los datos de las muestras seleccionadas para la exploración.
+
+
+Comenzamos exponiendo los datos de la distribución de intensidades del microarray en los datos crudos (rawdata). Observamos que la distribución inicial tienen cierta uniformidad, pero que algunas muestras se desvían más de la media, este efecto es más acusado en el grupo de los asintomáticos, sobre todo en la muestra A2.
+
+```{r echo=FALSE}
+boxplot(rawdata, cex.axis=0.5, las=2,  which="all", names=sampleNames ,col = colores, main = "Distribución de intensidades en datos crudos")
+```
+
+El gŕafico de componentes principales nos muestra cierto agrupamiento en los grupos sintomáticos, y asintomáticos, con bastante dispersión entre el grupo control. El grupo que forma la muesta A2, con S2, C5, S4 y A5 son responsables de la mayor parte de la varianza. 
+
+```{r echo=FALSE}
+plotPCA <- function ( X, labels=NULL, colors=NULL, dataDesc="", scale=FALSE, formapunts=NULL, myCex=0.8,...)
+{
+    pcX<-prcomp(t(X), scale=scale) 
+    loads<- round(pcX$sdev^2/sum(pcX$sdev^2)*100,1)
+    xlab<-c(paste("PC1",loads[1],"%"))
+    ylab<-c(paste("PC2",loads[2],"%"))
+    if (is.null(colors)) colors=1
+    plot(pcX$x[,1:2],xlab=xlab,ylab=ylab, col=colors, pch=formapunts, 
+         xlim=c(min(pcX$x[,1])-100000, max(pcX$x[,1])+100000),ylim=c(min(pcX$x[,2])-100000, max(pcX$x[,2])+100000))
+    text(pcX$x[,1],pcX$x[,2], labels, pos=3, cex=myCex)
+    title(paste("Componentes principales para datos crudos de", dataDesc, sep=" "), cex=0.8)
+}
+
+plotPCA(exprs(rawdata), labels=sampleNames, dataDesc="rawdata", colors=colores,
+        formapunts=c(rep(16,4),rep(17,4)), myCex=0.6)
+```
+
+
+Cuando planteamos el dendrograma vemos que esa dispersión de las muestras citadas se ve reflejada en un agrupamientno a la derecha y a la izquierda, con la muestra A2 separada incluso de las aledañas de su grupo. Las muestras del grupo control parecen más dispersas.
+
+```{r}
+clust.euclid.average <- hclust(dist(t(exprs(rawdata))),method="average")
+plot(clust.euclid.average, label= sampleNames, main="Hierarchical clustering of RawData", cex=0.7,  hang=-1)
+```
+
+
+#### Normalización
+
+
+
